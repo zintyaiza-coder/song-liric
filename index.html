@@ -7,12 +7,21 @@
   <link rel="stylesheet" href="style.css" />
 </head>
 <body>
+  <!-- Kanvas pemandangan malam -->
   <canvas id="scene"></canvas>
+  <!-- Kanvas khusus coretan manual di langit -->
+  <canvas id="drawLayer"></canvas>
 
   <div class="overlay-left">
     <span class="badge">malam yang sunyi</span>
-    <h1>di bawah langit pegunungan</h1>
-    <p>gerakkan kursor pelan atau klik langit untuk melepas kunang-kunang kecil</p>
+    <h1>lukis langit malammu</h1>
+    <p>tahan dan geser kursor di langit untuk menggambar jejak cahaya kuning berkilau</p>
+
+    <div class="toolbar">
+      <button id="brushBtn" class="tool-btn active" type="button">kuas cahaya</button>
+      <button id="eraserBtn" class="tool-btn" type="button">penghapus</button>
+      <button id="clearBtn" class="tool-btn subtle" type="button">bersihkan semua</button>
+    </div>
   </div>
 
   <script src="script.js"></script>
