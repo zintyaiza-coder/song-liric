@@ -1,8 +1,15 @@
-const canvas = document.getElementById('scene');
-const ctx = canvas.getContext('2d');
+const sceneCanvas = document.getElementById('scene');
+const sceneCtx = sceneCanvas.getContext('2d');
 
-let width = (canvas.width = window.innerWidth);
-let height = (canvas.height = window.innerHeight);
+const drawCanvas = document.getElementById('drawLayer');
+const drawCtx = drawCanvas.getContext('2d');
+
+const brushBtn = document.getElementById('brushBtn');
+const eraserBtn = document.getElementById('eraserBtn');
+const clearBtn = document.getElementById('clearBtn');
+
+let width = (sceneCanvas.width = drawCanvas.width = window.innerWidth);
+let height = (sceneCanvas.height = drawCanvas.height = window.innerHeight);
 
 const stars = [];
 const fireflies = [];
@@ -13,6 +20,12 @@ const pointer = {
   targetX: width * 0.65,
   targetY: height * 0.4
 };
+
+// State menggambar
+let isDrawing = false;
+let currentTool = 'brush'; // 'brush' | 'eraser'
+let lastX = 0;
+let lastY = 0;
 
 function initScene() {
   stars.length = 0;
@@ -47,111 +60,210 @@ function initScene() {
 
 initScene();
 
+// Resize dengan mempertahankan coretan yang sudah digambar
 window.addEventListener('resize', () => {
-  width = canvas.width = window.innerWidth;
-  height = canvas.height = window.innerHeight;
+  const tempCanvas = document.createElement('canvas');
+  tempCanvas.width = width;
+  tempCanvas.height = height;
+  tempCanvas.getContext('2d').drawImage(drawCanvas, 0, 0);
+
+  width = sceneCanvas.width = drawCanvas.width = window.innerWidth;
+  height = sceneCanvas.height = drawCanvas.height = window.innerHeight;
+
+  drawCtx.drawImage(tempCanvas, 0, 0);
   initScene();
 });
 
-function spawnLight(x, y, count = 1, isBurst = false) {
+// Kontrol tombol alat
+brushBtn.addEventListener('click', () => {
+  currentTool = 'brush';
+  brushBtn.classList.add('active');
+  eraserBtn.classList.remove('active');
+  drawCanvas.style.cursor = 'crosshair';
+});
+
+eraserBtn.addEventListener('click', () => {
+  currentTool = 'eraser';
+  eraserBtn.classList.add('active');
+  brushBtn.classList.remove('active');
+  drawCanvas.style.cursor = 'cell';
+});
+
+clearBtn.addEventListener('click', () => {
+  drawCtx.clearRect(0, 0, width, height);
+});
+
+// Percikan cahaya ringan saat menggambar
+function spawnLight(x, y, count = 1) {
   for (let i = 0; i < count; i++) {
     const angle = Math.random() * Math.PI * 2;
-    const speed = isBurst ? Math.random() * 1.5 + 0.3 : Math.random() * 0.45 + 0.1;
+    const speed = Math.random() * 0.5 + 0.1;
     bursts.push({
       x,
       y,
       vx: Math.cos(angle) * speed,
-      vy: Math.sin(angle) * speed - 0.3,
-      radius: isBurst ? Math.random() * 2.5 + 1.2 : Math.random() * 1.7 + 0.8,
+      vy: Math.sin(angle) * speed - 0.25,
+      radius: Math.random() * 1.8 + 0.8,
       life: 1,
-      decay: isBurst ? 0.011 : 0.018
+      decay: 0.02
     });
   }
 }
 
-window.addEventListener('mousemove', (e) => {
-  pointer.targetX = e.clientX;
-  pointer.targetY = e.clientY;
-  if (Math.random() > 0.45) {
-    spawnLight(e.clientX, e.clientY, 1, false);
+// Logika menggambar & menghapus pada layer atas
+function getPos(e) {
+  if (e.touches && e.touches.length > 0) {
+    return { x: e.touches[0].clientX, y: e.touches[0].clientY };
   }
-});
+  return { x: e.clientX, y: e.clientY };
+}
 
-window.addEventListener('click', (e) => {
-  spawnLight(e.clientX, e.clientY, 14, true);
-});
+function startStroke(e) {
+  isDrawing = true;
+  const pos = getPos(e);
+  lastX = pos.x;
+  lastY = pos.y;
+  drawStroke(pos.x, pos.y);
+}
 
+function moveStroke(e) {
+  const pos = getPos(e);
+  pointer.targetX = pos.x;
+  pointer.targetY = pos.y;
+
+  if (!isDrawing) return;
+  drawStroke(pos.x, pos.y);
+}
+
+function endStroke() {
+  isDrawing = false;
+}
+
+function drawStroke(x, y) {
+  drawCtx.lineCap = 'round';
+  drawCtx.lineJoin = 'round';
+
+  if (currentTool === 'brush') {
+    drawCtx.globalCompositeOperation = 'source-over';
+
+    // Lapisan 1: Pendar glow kuning emas luas di bagian luar
+    drawCtx.strokeStyle = 'rgba(255, 200, 0, 0.45)';
+    drawCtx.lineWidth = 7;
+    drawCtx.shadowColor = '#ffbe0b';
+    drawCtx.shadowBlur = 22;
+
+    drawCtx.beginPath();
+    drawCtx.moveTo(lastX, lastY);
+    drawCtx.lineTo(x, y);
+    drawCtx.stroke();
+
+    // Lapisan 2: Inti garis kuning berkilau terang di bagian tengah
+    drawCtx.strokeStyle = '#fff394';
+    drawCtx.lineWidth = 2.6;
+    drawCtx.shadowColor = '#ffd60a';
+    drawCtx.shadowBlur = 12;
+
+    drawCtx.beginPath();
+    drawCtx.moveTo(lastX, lastY);
+    drawCtx.lineTo(x, y);
+    drawCtx.stroke();
+
+    if (Math.random() > 0.45) {
+      spawnLight(x, y, 2);
+    }
+  } else if (currentTool === 'eraser') {
+    drawCtx.globalCompositeOperation = 'destination-out';
+    drawCtx.shadowBlur = 0;
+    drawCtx.lineWidth = 32;
+
+    drawCtx.beginPath();
+    drawCtx.moveTo(lastX, lastY);
+    drawCtx.lineTo(x, y);
+    drawCtx.stroke();
+  }
+
+  lastX = x;
+  lastY = y;
+}
+
+drawCanvas.addEventListener('mousedown', startStroke);
+window.addEventListener('mousemove', moveStroke);
+window.addEventListener('mouseup', endStroke);
+
+drawCanvas.addEventListener('touchstart', startStroke, { passive: true });
+drawCanvas.addEventListener('touchmove', moveStroke, { passive: true });
+window.addEventListener('touchend', endStroke);
+
+// --- RENDER PEMANDANGAN MALAM ---
 function drawSkyAndMoon() {
-  // Gradasi langit malam dalam
-  const skyGrad = ctx.createLinearGradient(0, 0, 0, height);
+  const skyGrad = sceneCtx.createLinearGradient(0, 0, 0, height);
   skyGrad.addColorStop(0, '#040711');
   skyGrad.addColorStop(0.45, '#0b1428');
   skyGrad.addColorStop(0.8, '#162542');
   skyGrad.addColorStop(1, '#1d2f4f');
-  ctx.fillStyle = skyGrad;
-  ctx.fillRect(0, 0, width, height);
+  sceneCtx.fillStyle = skyGrad;
+  sceneCtx.fillRect(0, 0, width, height);
 
-  // Posisi bulan di sisi kanan atas agar ruang kiri & tengah lega
   const moonX = width * 0.78;
   const moonY = height * 0.2;
   const moonRadius = Math.min(width, height) * 0.055;
 
   // Pendar cahaya bulan lembut
-  const moonGlow = ctx.createRadialGradient(moonX, moonY, moonRadius * 0.4, moonX, moonY, moonRadius * 5.5);
+  const moonGlow = sceneCtx.createRadialGradient(moonX, moonY, moonRadius * 0.4, moonX, moonY, moonRadius * 5.5);
   moonGlow.addColorStop(0, 'rgba(255, 244, 214, 0.28)');
   moonGlow.addColorStop(0.4, 'rgba(180, 210, 255, 0.08)');
   moonGlow.addColorStop(1, 'rgba(180, 210, 255, 0)');
-  ctx.fillStyle = moonGlow;
-  ctx.beginPath();
-  ctx.arc(moonX, moonY, moonRadius * 5.5, 0, Math.PI * 2);
-  ctx.fill();
+  sceneCtx.fillStyle = moonGlow;
+  sceneCtx.beginPath();
+  sceneCtx.arc(moonX, moonY, moonRadius * 5.5, 0, Math.PI * 2);
+  sceneCtx.fill();
 
-  // Lingkaran bulan purnama lembut
-  ctx.fillStyle = '#fff8e6';
-  ctx.beginPath();
-  ctx.arc(moonX, moonY, moonRadius, 0, Math.PI * 2);
-  ctx.fill();
+  // Lingkaran bulan
+  sceneCtx.fillStyle = '#fff8e6';
+  sceneCtx.beginPath();
+  sceneCtx.arc(moonX, moonY, moonRadius, 0, Math.PI * 2);
+  sceneCtx.fill();
 
   // Tekstur bayangan halus di permukaan bulan
-  ctx.fillStyle = 'rgba(215, 205, 185, 0.28)';
-  ctx.beginPath();
-  ctx.arc(moonX - moonRadius * 0.25, moonY - moonRadius * 0.15, moonRadius * 0.22, 0, Math.PI * 2);
-  ctx.arc(moonX + moonRadius * 0.2, moonY + moonRadius * 0.25, moonRadius * 0.16, 0, Math.PI * 2);
-  ctx.fill();
+  sceneCtx.fillStyle = 'rgba(215, 205, 185, 0.28)';
+  sceneCtx.beginPath();
+  sceneCtx.arc(moonX - moonRadius * 0.25, moonY - moonRadius * 0.15, moonRadius * 0.22, 0, Math.PI * 2);
+  sceneCtx.arc(moonX + moonRadius * 0.2, moonY + moonRadius * 0.25, moonRadius * 0.16, 0, Math.PI * 2);
+  sceneCtx.fill();
 }
 
 function drawStars() {
   for (const s of stars) {
     s.phase += s.speed;
     const alpha = s.alpha * (0.55 + 0.45 * Math.sin(s.phase));
-    ctx.fillStyle = `rgba(255, 250, 235, ${alpha})`;
-    ctx.beginPath();
-    ctx.arc(s.x, s.y, s.radius, 0, Math.PI * 2);
-    ctx.fill();
+    sceneCtx.fillStyle = `rgba(255, 250, 235, ${alpha})`;
+    sceneCtx.beginPath();
+    sceneCtx.arc(s.x, s.y, s.radius, 0, Math.PI * 2);
+    sceneCtx.fill();
   }
 }
 
 function drawMountainLayer(points, fillStyle) {
-  ctx.fillStyle = fillStyle;
-  ctx.beginPath();
-  ctx.moveTo(0, height);
-  ctx.lineTo(0, points[0].y);
+  sceneCtx.fillStyle = fillStyle;
+  sceneCtx.beginPath();
+  sceneCtx.moveTo(0, height);
+  sceneCtx.lineTo(0, points[0].y);
 
   for (let i = 0; i < points.length - 1; i++) {
     const xc = (points[i].x + points[i + 1].x) / 2;
     const yc = (points[i].y + points[i + 1].y) / 2;
-    ctx.quadraticCurveTo(points[i].x, points[i].y, xc, yc);
+    sceneCtx.quadraticCurveTo(points[i].x, points[i].y, xc, yc);
   }
 
   const last = points[points.length - 1];
-  ctx.lineTo(last.x, last.y);
-  ctx.lineTo(width, height);
-  ctx.closePath();
-  ctx.fill();
+  sceneCtx.lineTo(last.x, last.y);
+  sceneCtx.lineTo(width, height);
+  sceneCtx.closePath();
+  sceneCtx.fill();
 }
 
 function drawMountains() {
-  // Lapisan gunung jauh (kabut biru malam)
+  // Lapisan gunung jauh
   drawMountainLayer(
     [
       { x: 0, y: height * 0.62 },
@@ -166,12 +278,12 @@ function drawMountains() {
   );
 
   // Kabut tipis di antara lapisan gunung
-  const mistGrad = ctx.createLinearGradient(0, height * 0.48, 0, height * 0.75);
+  const mistGrad = sceneCtx.createLinearGradient(0, height * 0.48, 0, height * 0.75);
   mistGrad.addColorStop(0, 'rgba(130, 165, 220, 0)');
   mistGrad.addColorStop(0.5, 'rgba(130, 165, 220, 0.08)');
   mistGrad.addColorStop(1, 'rgba(130, 165, 220, 0)');
-  ctx.fillStyle = mistGrad;
-  ctx.fillRect(0, height * 0.48, width, height * 0.27);
+  sceneCtx.fillStyle = mistGrad;
+  sceneCtx.fillRect(0, height * 0.48, width, height * 0.27);
 
   // Lapisan gunung tengah
   drawMountainLayer(
@@ -187,7 +299,7 @@ function drawMountains() {
     '#0b1323'
   );
 
-  // Lapisan bukit depan paling gelap (membuat teks pojok kiri terbaca jelas)
+  // Lapisan bukit depan paling gelap
   drawMountainLayer(
     [
       { x: 0, y: height * 0.76 },
@@ -202,19 +314,20 @@ function drawMountains() {
 }
 
 function drawParticles() {
-  // Easing kursor halus
   pointer.x += (pointer.targetX - pointer.x) * 0.08;
   pointer.y += (pointer.targetY - pointer.y) * 0.08;
 
-  const cursorGlow = ctx.createRadialGradient(pointer.x, pointer.y, 0, pointer.x, pointer.y, 85);
-  cursorGlow.addColorStop(0, 'rgba(255, 224, 150, 0.14)');
-  cursorGlow.addColorStop(1, 'rgba(255, 224, 150, 0)');
-  ctx.fillStyle = cursorGlow;
-  ctx.beginPath();
-  ctx.arc(pointer.x, pointer.y, 85, 0, Math.PI * 2);
-  ctx.fill();
+  const cursorGlow = sceneCtx.createRadialGradient(pointer.x, pointer.y, 0, pointer.x, pointer.y, 85);
+  cursorGlow.addColorStop(
+    0,
+    currentTool === 'eraser' ? 'rgba(160, 205, 255, 0.14)' : 'rgba(255, 214, 10, 0.16)'
+  );
+  cursorGlow.addColorStop(1, 'rgba(255, 214, 10, 0)');
+  sceneCtx.fillStyle = cursorGlow;
+  sceneCtx.beginPath();
+  sceneCtx.arc(pointer.x, pointer.y, 85, 0, Math.PI * 2);
+  sceneCtx.fill();
 
-  // Kunang-kunang alami
   for (const f of fireflies) {
     f.x += f.vx;
     f.y += f.vy;
@@ -226,13 +339,12 @@ function drawParticles() {
     if (f.y > height * 0.97) f.vy = -Math.abs(f.vy);
 
     const alpha = f.alpha * (0.45 + 0.55 * Math.sin(f.phase));
-    ctx.fillStyle = `rgba(255, 232, 150, ${alpha})`;
-    ctx.beginPath();
-    ctx.arc(f.x, f.y, f.radius, 0, Math.PI * 2);
-    ctx.fill();
+    sceneCtx.fillStyle = `rgba(255, 232, 150, ${alpha})`;
+    sceneCtx.beginPath();
+    sceneCtx.arc(f.x, f.y, f.radius, 0, Math.PI * 2);
+    sceneCtx.fill();
   }
 
-  // Percikan cahaya dari kursor/klik
   for (let i = bursts.length - 1; i >= 0; i--) {
     const b = bursts[i];
     b.x += b.vx;
@@ -244,15 +356,15 @@ function drawParticles() {
       continue;
     }
 
-    ctx.fillStyle = `rgba(255, 218, 135, ${b.life * 0.9})`;
-    ctx.beginPath();
-    ctx.arc(b.x, b.y, b.radius * b.life, 0, Math.PI * 2);
-    ctx.fill();
+    sceneCtx.fillStyle = `rgba(255, 224, 70, ${b.life * 0.95})`;
+    sceneCtx.beginPath();
+    sceneCtx.arc(b.x, b.y, b.radius * b.life, 0, Math.PI * 2);
+    sceneCtx.fill();
   }
 }
 
 function animate() {
-  ctx.clearRect(0, 0, width, height);
+  sceneCtx.clearRect(0, 0, width, height);
   drawSkyAndMoon();
   drawStars();
   drawMountains();
